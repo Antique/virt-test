@@ -98,7 +98,7 @@ def check_numatune_xml(params):
     #if the placement is auto, there is no nodeset in numa param.
     try:
         nodeset_from_xml = numa_params['nodeset']
-    except KeyError():
+    except KeyError:
         nodeset_from_xml = ""
 
     if mode and mode != mode_from_xml:
