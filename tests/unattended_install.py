@@ -1003,6 +1003,8 @@ def run_unattended_install(test, params, env):
                             dst, mount_point, image_name)
 
     vm = env.get_vm(params["main_vm"])
+    if vm.exists():
+        raise error.TestNAError("Domain already exists")
     local_dir = params.get("local_dir")
     if local_dir:
         local_dir = utils_misc.get_path(test.bindir, local_dir)

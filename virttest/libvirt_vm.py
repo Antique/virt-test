@@ -1025,6 +1025,11 @@ class VM(virt_vm.BaseVM):
                 logging.debug('VM.create activating nic %s' % nic)
                 self.activate_nic(nic.nic_name)
 
+            # Create isa serial ports.
+            self.serial_ports = []
+            for serial in params.objects("isa_serials"):
+                self.serial_ports.append(serial)
+
             # Make qemu command
             install_command = self.make_create_command()
 
