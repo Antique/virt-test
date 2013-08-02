@@ -243,6 +243,8 @@ def run_virsh_numatune(test, params, env):
             # and will start the guest after restarting libvirtd service
             if vm.is_alive():
                 vm.destroy()
+            if not utils_cgroup.cgconfig_exists():
+                raise error.TestNAError("Host doesn't support cgconfig")
             if utils_cgroup.cgconfig_is_running():
                 utils_cgroup.cgconfig_stop()
         # Refresh libvirtd service to get latest cgconfig service change
