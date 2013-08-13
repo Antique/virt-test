@@ -802,7 +802,7 @@ def umount(src, mount_point, fstype):
     """
 
     mount_string = "%s %s %s" % (src, mount_point, fstype)
-    if mount_string in file("/etc/mtab").read():
+    if is_mounted(src, mount_point, fstype):
         umount_cmd = "umount %s" % mount_point
         try:
             utils.system(umount_cmd)
@@ -826,7 +826,7 @@ def mount(src, mount_point, fstype, perm="rw"):
     umount(src, mount_point, fstype)
     mount_string = "%s %s %s %s" % (src, mount_point, fstype, perm)
 
-    if mount_string in file("/etc/mtab").read():
+    if is_mounted(src, mount_point, fstype, perm):
         logging.debug("%s is already mounted in %s with %s",
                       src, mount_point, perm)
         return True
@@ -837,8 +837,26 @@ def mount(src, mount_point, fstype, perm="rw"):
     except error.CmdError:
         return False
 
-    logging.debug("Verify the mount through /etc/mtab")
-    if mount_string in file("/etc/mtab").read():
+    return is_mounted(src, mount_point, fstype, perm)
+
+
+def is_mounted(src, mount_point, fstype, perm=""):
+    """
+    Check mount status from /etc/mtab
+
+    :param src: mount source
+    :type src: string
+    :param mount_point: mount point
+    :type mount_point: string
+    :param fstype: file system type
+    :type fstype: string
+    :param perm: mount premission
+    :type perm: string
+    :return: if the src is mounted as expect
+    :rtype: Boolean
+    """
+    mount_string = "%s %s %s %s" % (src, mount_point, fstype, perm)
+    if mount_string.strip() in file("/etc/mtab").read():
         logging.debug("%s is successfully mounted", src)
         return True
     else:
@@ -1103,6 +1121,39 @@ def create_x509_dir(path, cacert_subj, server_subj, passphrase,
         utils.run(cmd)
         logging.info(cmd)
 
+def convert_ipv4_to_ipv6(ipv4):
+    """
+    Translates a passed in string of an ipv4 address to an ipv6 address.
+
+    @param ipv4: a string of an ipv4 address
+    """
+
+    converted_ip = "::ffff:"
+    split_ipaddress = ipv4.split('.')
+    try:
+        socket.inet_aton(ipv4)
+    except socket.error:
+        raise ValueError("ipv4 to be converted is invalid")
+    if (len(split_ipaddress) != 4):
+        raise ValueError("ipv4 address is not in dotted quad format")
+
+    for index, string in enumerate(split_ipaddress):
+        if index != 1:
+            test = str(hex(int(string)).split('x')[1])
+            if len(test) == 1:
+                final = "0"
+                final+=test
+                test = final
+        else:
+            test = str(hex(int(string)).split('x')[1])
+            if len(test) == 1:
+                final = "0"
+                final+=test+":"
+                test = final
+            else:
+                test += ":"
+        converted_ip += test
+    return converted_ip
 
 class NumaNode(object):
     """

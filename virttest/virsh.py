@@ -1531,8 +1531,8 @@ def pool_undefine(name, extra="", **dargs):
     return command("pool-undefine %s %s" % (name, extra), **dargs)
 
 
-def vol_create_as(vol_name, pool_name, capacity, allocation, frmt, \
-                      extra="", **dargs):
+def vol_create_as(vol_name, pool_name, capacity, allocation,
+                  frmt, extra="", **dargs):
     """
     To create the volumes on different available pool
 
@@ -1550,7 +1550,7 @@ def vol_create_as(vol_name, pool_name, capacity, allocation, frmt, \
 
     if allocation:
         cmd += " --allocation %s" % (allocation)
-    if format:
+    if frmt:
         cmd += " --format %s" % (frmt)
     if extra:
         cmd += " %s" % (extra)
@@ -2158,3 +2158,15 @@ def nodedev_reattach(name, options="", **dargs):
     CmdResult = command(cmd, **dargs)
 
     return CmdResult
+
+
+def vcpucount(name, options, **dargs):
+    """
+    Get the vcpu count of guest.
+
+    @param name: name of domain.
+    @param options: options for vcpucoutn command.
+    @return: CmdResult object.
+    """
+    cmd = "vcpucount %s %s" % (name, options)
+    return command(cmd, **dargs)
