@@ -1,8 +1,14 @@
 import re
 import commands
 import logging
+import os
 from autotest.client.shared import error
 from virttest import virsh
+
+try:
+    from autotest.client.shared import utils_cgroup
+except ImportError:
+    from virttest.staging import utils_cgroup
 
 
 def run_virsh_cpu_stats(test, params, env):
@@ -73,9 +79,17 @@ def run_virsh_cpu_stats(test, params, env):
         else:
             # Get cgroup cpu_time
             if not get_totalonly:
-                cgcpu = "cat /cgroup/cpuacct/libvirt/qemu/" + vm_name + \
-                        "/cpuacct.usage_percpu"
-                cgtime = commands.getoutput(cgcpu).strip().split()
+                ctl_mount = "/sys/fs/cgroup/cpuacct"
+                cgroup_path = os.path.join(ctl_mount, "libvirt/qemu",
+                                           vm_name, "cpuacct.usage_percpu")
+                if not os.path.exists(cgroup_path):
+                    cgroup_path = os.path.join(ctl_mount, "machine", vm_name
+                                               + ".libvirt-qemu",
+                                               "cpuacct.usage_percpu")
+                if not os.path.exists(cgroup_path):
+                    raise error.TestNAError("Unknown path to cgroups")
+                get_value_cmd = "cat %s" % cgroup_path
+                cgtime = commands.getoutput(get_value_cmd).strip().split()
                 logging.debug("cgtime get is %s", cgtime)
 
             # Cut CPUs from output and format to list
