@@ -70,6 +70,14 @@ def run_virsh_update_device(test, params, env):
         if not re.search('hdc', output3):
             raise  error.TestFail("didn't see 'attached device")
 
+    disks = libvirt_xml.VMXML.get_disk_blk(vm_name)
+    if "hdc" not in disks:
+        vm.destroy()
+        virsh.attach_disk(vm_name, "\'\'", "hdc",
+                          " --type cdrom --sourcetype file --config",
+                          debug=True)
+        vm.start()
+        vm.wait_for_login()
 
     domid = vm.get_id()
     domuuid = vm.get_uuid()
@@ -91,12 +99,6 @@ def run_virsh_update_device(test, params, env):
     vm_xml = os.path.join(test.tmpdir, "vm_xml")
     virsh.dumpxml(vm_name, extra="", to_file=vm_xml)
     vmxml_before = libvirt_xml.VMXML.new_from_dumpxml(vm_name)
-
-    disks = libvirt_xml.VMXML.get_disk_blk(vm_name)
-    if "cdrom" is not disks:
-        virsh.attach_disk(vm_name, "", "hdc",
-                          " --type cdrom --sourcetype file --live",
-                          debug=True)
 
     if vm_ref == "id":
         vm_ref = domid
