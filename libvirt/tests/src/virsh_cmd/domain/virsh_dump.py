@@ -129,7 +129,7 @@ def run_virsh_dump(test, params, env):
             if status == 0:
                 logging.debug("Run file %s output: %s", dump_file, output)
                 actual_format = output.split(" ")[1]
-                if actual_format == dump_image_format:
+                if actual_format.lower() == dump_image_format:
                     if dump_image_format in valid_format:
                         logging.info("Compress dumped file to %s successfully",
                                      dump_image_format)
@@ -163,6 +163,11 @@ def run_virsh_dump(test, params, env):
                             ignore_status=True, debug=True)
     status = cmd_result.exit_status
 
+    if len(dump_image_format) != 0:
+        clean_qemu_conf = "sed -i '$d' %s " % qemu_conf
+        if os.system(clean_qemu_conf):
+            raise error.TestFail("Fail to recover %s", qemu_conf)
+
     # Check libvirtd status
     if utils_libvirtd.libvirtd_is_running():
         if check_domstate(vm.state(), options):
@@ -190,8 +195,3 @@ def run_virsh_dump(test, params, env):
 
     if os.path.isfile(dump_file):
         os.remove(dump_file)
-
-    if len(dump_image_format) != 0:
-        clean_qemu_conf = "sed -i '$d' %s " % qemu_conf
-        if os.system(clean_qemu_conf):
-            raise error.TestFail("Fail to recover %s", qemu_conf)
