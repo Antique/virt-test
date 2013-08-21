@@ -52,6 +52,15 @@ def run_virsh_domif_setlink_getlink(test, params, env):
     status_error = params.get("status_error", "no")
     mac_address = vm.get_virsh_mac_address(0)
     device = "vnet0"
+
+    # Back up xml file.
+    vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
+    if source_path:
+        device_source = os.path.join(test.virtdir, device_source_name)
+    else:
+        device_source = device_source_name
+    virsh.dumpxml(vm_name, extra="", to_file=vm_xml_file)
+
     # Vm status
     if start_vm == "yes" and vm.is_dead():
         vm.start()
@@ -88,6 +97,14 @@ def run_virsh_domif_setlink_getlink(test, params, env):
         vm.destroy()
         vm.start()
         logging.info("Restart VM")
+
+    # Recover VM.
+    if vm.is_alive():
+        vm.destroy(gracefully=False)
+    virsh.undefine(vm_name)
+    virsh.define(vm_xml_file)
+    if os.path.exists(device_source):
+        os.remove(device_source)
 
     elif start_vm == "no":
         vm.start()
