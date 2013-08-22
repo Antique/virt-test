@@ -1,6 +1,6 @@
 import logging, os, re, time, codecs
 from autotest.client.shared import error
-from virttest import utils_test, virsh, utils_libvirtd
+from virttest import utils_test, virsh, utils_libvirtd, remote
 from virttest.libvirt_xml import vm_xml
 
 
@@ -77,6 +77,8 @@ def run_virsh_migrate(test, params, env):
         logging.error("Backing up xmlfile failed.")
 
     src_uri = vm.connect_uri
+    if not src_uri:
+        src_uri = params.get("connect_uri")
     dest_uri = params.get("virsh_migrate_desturi")
     # Identify easy config. mistakes early
     warning_text = ("Migration VM %s URI %s appears problematic "
@@ -98,8 +100,14 @@ def run_virsh_migrate(test, params, env):
     libvirtd_state = params.get("virsh_migrate_libvirtd_state", 'on')
     src_state = params.get("virsh_migrate_src_state", "running")
     dest_xmlfile = ""
-    shared_storage_nfs = params.get("shared_storage_nfs", "")
-    device_target = "vda"
+    remote_ip = params.get("remote_ip", None)
+    remote_password = params.get("remote_password", None)
+    local_ip = params.get("local_ip", None)
+
+    #Remote password, ip and local ip must be set
+    if not remote_ip or not remote_password or not local_ip:
+        raise error.TestNAError("Remote password, ip and local ip must be set.",
+                                remote_password, remote_ip, local_ip)
 
     #Direct migration is supported only for Xen in libvirt
     if options.count("direct") or extra.count("direct"):
@@ -110,26 +118,28 @@ def run_virsh_migrate(test, params, env):
     exception = False
     try:
         # To migrate you need to have a shared disk between hosts
-        if shared_storage_nfs == "":
-            raise error.TestError("For migration you need to have a shared "
-                                  "storage on NFS.")
+        os.system("service nfs start")
+        devices = vm.get_blk_devices()
+        image_path = os.path.dirname(devices["vda"]["source"])
+        os.system("exportfs -o rw,all_squash,anonuid=0,anongid=0 *:%s" % image_path)
 
-        if vm.is_alive():
-            vm.destroy(gracefully=False)
-        s_detach = virsh.detach_disk(vm_name, device_target,  "--config", debug=True)
-        if not s_detach:
-            logging.error("Detach vda failed before test.")
-        s_attach = virsh.attach_disk(vm_name, shared_storage_nfs, device_target,
-                                     "--config --driver qemu --subdriver qcow2 "
-                                     "--cache none", debug=True)
-        if not s_attach:
-            logging.error("Attach vda failed before test.")
-
-        vm.start()
-        vm.wait_for_login()
+        session = remote.wait_for_login("ssh", remote_ip, "22", "root",
+                                        remote_password, "[#$]")
+        cmd = "umount %s" % image_path
+        status, output = session.cmd_status_output(cmd)
+        if status and not output.count("not mounted"):
+            raise error.TestError("Fail to umount nfs on remote host '%s'", output)
+        cmd = "mkdir -p %s" % image_path
+        status, output = session.cmd_status_output(cmd)
+        if status:
+            raise error.TestError("Fail to create files on remote host '%s'", output)
+        cmd = "mount -t nfs %s:%s %s" %(local_ip, image_path, image_path)
+        status, output = session.cmd_status_output(cmd)
+        if status:
+            raise error.TestError("Fail to mount nfs on remote host '%s'", output)
 
         # Confirm VM can be accessed through network.
-        time.sleep(delay)
+        vm.wait_for_login()
         vm_ip = vm.get_address()
         s_ping, o_ping = utils_test.ping(vm_ip, count=2, timeout=delay)
         logging.info(o_ping)
@@ -280,6 +290,14 @@ def run_virsh_migrate(test, params, env):
         logging.info("%s removed." % vm_xmlfile_bak)
     if os.path.exists(dest_xmlfile):
         os.remove(dest_xmlfile)
+
+    cmd = "umount %s" % image_path
+    status, output = session.cmd_status_output(cmd)
+    if status:
+        logging.error("Fail to umount nfs on remote host '%s'", output)
+        exception = True
+
+    os.system("exportfs -u *:%s" % image_path)
 
     if exception:
         raise error.TestError("Error occurred. \n%s: %s" % (detail.__class__, detail))
