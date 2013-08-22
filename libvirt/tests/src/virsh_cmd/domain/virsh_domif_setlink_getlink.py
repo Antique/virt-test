@@ -1,4 +1,4 @@
-import logging, re
+import logging, re, os
 from autotest.client.shared import error
 from virttest import libvirt_vm, virsh
 from virttest.libvirt_xml import vm_xml
@@ -55,10 +55,6 @@ def run_virsh_domif_setlink_getlink(test, params, env):
 
     # Back up xml file.
     vm_xml_file = os.path.join(test.tmpdir, "vm.xml")
-    if source_path:
-        device_source = os.path.join(test.virtdir, device_source_name)
-    else:
-        device_source = device_source_name
     virsh.dumpxml(vm_name, extra="", to_file=vm_xml_file)
 
     # Vm status
@@ -92,19 +88,18 @@ def run_virsh_domif_setlink_getlink(test, params, env):
                              "equal with setlink operation ", getlink_output)
 
     logging.info("Getlink done")
-    # If --config is given should restart the vm then test link status
-    if options == "--config" and vm.is_alive():
-        vm.destroy()
-        vm.start()
-        logging.info("Restart VM")
 
     # Recover VM.
     if vm.is_alive():
         vm.destroy(gracefully=False)
     virsh.undefine(vm_name)
     virsh.define(vm_xml_file)
-    if os.path.exists(device_source):
-        os.remove(device_source)
+
+    # If --config is given should restart the vm then test link status
+    if options == "--config" and vm.is_alive():
+        vm.destroy()
+        vm.start()
+        logging.info("Restart VM")
 
     elif start_vm == "no":
         vm.start()
