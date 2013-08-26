@@ -103,6 +103,11 @@ def run_virsh_migrate(test, params, env):
     remote_ip = params.get("remote_ip", None)
     remote_password = params.get("remote_password", None)
     local_ip = params.get("local_ip", None)
+    migrate_uri = params.get("virsh_migrate_migrateuri", None)
+
+    #Add migrateuri if exists
+    if migrate_uri:
+        extra = ("%s --migrateuri=%s" %(extra, migrate_uri))
 
     #Remote password, ip and local ip must be set
     if not remote_ip or not remote_password or not local_ip:
