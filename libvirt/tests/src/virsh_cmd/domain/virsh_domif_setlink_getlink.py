@@ -89,12 +89,6 @@ def run_virsh_domif_setlink_getlink(test, params, env):
 
     logging.info("Getlink done")
 
-    # Recover VM.
-    if vm.is_alive():
-        vm.destroy(gracefully=False)
-    virsh.undefine(vm_name)
-    virsh.define(vm_xml_file)
-
     # If --config is given should restart the vm then test link status
     if options == "--config" and vm.is_alive():
         vm.destroy()
@@ -104,6 +98,7 @@ def run_virsh_domif_setlink_getlink(test, params, env):
     elif start_vm == "no":
         vm.start()
 
+    error_msg = ""
     if status_error == "no":
         # Serial login the vm to check link status
         # Start vm check the link statue
@@ -120,14 +115,22 @@ def run_virsh_domif_setlink_getlink(test, params, env):
         cmd_status = session.cmd_status('ifdown %s' % guest_if_name)
         cmd_status = session.cmd_status('ifup %s' % guest_if_name)
         if cmd_status != 0:
-            raise error.TestFail("Could not bring up interface %s inside guest"
-                                 % guest_if_name)
+            error_msg = ("Could not bring up interface %s inside guest"
+                         % guest_if_name)
     else: # negative test
         # stop guest, so state is always consistent on next start
         vm.destroy()
 
-    # Check status_error
+    # Recover VM.
+    if vm.is_alive():
+        vm.destroy(gracefully=False)
+    virsh.undefine(vm_name)
+    virsh.define(vm_xml_file)
 
+    if error_msg is not "":
+        raise error.TestFail(error_msg)
+
+    # Check status_error
     if status_error == "yes":
         if status:
             logging.info("Expected error (negative testing). Output: %s",
