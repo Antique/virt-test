@@ -84,16 +84,21 @@ def check_numatune_xml(params):
     if not virsh.is_alive(vm_name):
         virsh.start(vm_name)
 
-    numa_params = libvirt_xml.VMXML.get_numa_params(vm_name)
-    if not numa_params:
-        logging.error("Could not get numa parameters for %s", vm_name)
-        return False
+    try:
+        numa_params = libvirt_xml.VMXML.get_numa_params(vm_name)
+    except libvirt_xml.xcepts.LibvirtXMLAccessorError:
+        logging.error("could not get numa parameters for %s", vm_name)
+        numa_params = dict()
 
-    mode_from_xml = numa_params['mode']
+    try:
+        mode_from_xml = numa_params['mode']
+    except KeyError:
+        mode_from_xml = "strict"
+
     #if the placement is auto, there is no nodeset in numa param.
     try:
         nodeset_from_xml = numa_params['nodeset']
-    except KeyError():
+    except KeyError:
         nodeset_from_xml = ""
 
     if mode and mode != mode_from_xml:
@@ -238,6 +243,8 @@ def run_virsh_numatune(test, params, env):
             # and will start the guest after restarting libvirtd service
             if vm.is_alive():
                 vm.destroy()
+            if not utils_cgroup.cgconfig_exists():
+                raise error.TestNAError("Host doesn't support cgconfig")
             if utils_cgroup.cgconfig_is_running():
                 utils_cgroup.cgconfig_stop()
         # Refresh libvirtd service to get latest cgconfig service change
