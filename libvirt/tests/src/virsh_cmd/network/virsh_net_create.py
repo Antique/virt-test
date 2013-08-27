@@ -150,10 +150,13 @@ def run_virsh_net_create(test, params, env):
 
         # Recover from backup
         for netxml in backup.values():
-            netxml.create()
+            if backup_state[netxml.name]['persistent']:
+                netxml['defined'] = True
+                netxml['autostart'] = backup_state[netxml.name]['autostart']
+            else:
+                netxml.create()
             # autostart = True requires persistent = True first!
-            for state in ['active', 'persistent', 'autostart']:
-                netxml[state] = backup_state[netxml.name][state]
+            netxml['active'] = backup_state[netxml.name]['active']
 
         # Close down persistent virsh session (including for all netxml copies)
         vrsh.close_session()
