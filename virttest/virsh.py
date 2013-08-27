@@ -137,7 +137,7 @@ class VirshSession(aexpect.ShellSession):
                                 % (ssh_cmd, virsh_exec, self.uri) )
         else: # setting up a local session or re-using a session
             if self.uri:
-                self.virsh_exec = " -c '%s'" % (virsh_exec,self.uri)
+                self.virsh_exec = "%s -c '%s'" % (virsh_exec,self.uri)
             else:
                 self.virsh_exec = virsh_exec
             ssh_cmd = None # flags not-remote session
