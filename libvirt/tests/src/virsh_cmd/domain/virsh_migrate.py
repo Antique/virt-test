@@ -1,4 +1,5 @@
 import logging, os, re, time, codecs
+from autotest.client import utils
 from autotest.client.shared import error
 from virttest import utils_test, virsh, utils_libvirtd, remote
 from virttest.libvirt_xml import vm_xml
@@ -104,6 +105,7 @@ def run_virsh_migrate(test, params, env):
     remote_password = params.get("remote_password", None)
     local_ip = params.get("local_ip", None)
     migrate_uri = params.get("virsh_migrate_migrateuri", None)
+    second_disk = params.get("virsh_migrate_second_disk", 'no')
 
     #Add migrateuri if exists
     if migrate_uri:
@@ -123,25 +125,69 @@ def run_virsh_migrate(test, params, env):
     exception = False
     try:
         # To migrate you need to have a shared disk between hosts
-        os.system("service nfs start")
+        utils.run("service nfs restart", verbose=True)
         devices = vm.get_blk_devices()
-        image_path = os.path.dirname(devices["vda"]["source"])
-        os.system("exportfs -o rw,all_squash,anonuid=0,anongid=0 *:%s" % image_path)
+        nfs_path = os.path.dirname(devices["vda"]["source"])
+        disk_image = os.path.basename(devices["vda"]["source"])
+        mount_path = "/tmp/libvirt/nfs_share"
+        utils.run("exportfs -o rw,no_root_squash *:%s" % nfs_path, verbose=True)
 
         session = remote.wait_for_login("ssh", remote_ip, "22", "root",
                                         remote_password, "[#$]")
-        cmd = "umount %s" % image_path
+
+        cmd = "mount"
+        cmd_umount = "umount -f %s" % mount_path
         status, output = session.cmd_status_output(cmd)
-        if status and not output.count("not mounted"):
-            raise error.TestError("Fail to umount nfs on remote host '%s'", output)
-        cmd = "mkdir -p %s" % image_path
+        if output.count(mount_path):
+            status, output = session.cmd_status_output(cmd_umount)
+            if status and not output.count("not mounted"):
+                raise error.TestError("Fail to umount nfs on remote host '%s'" % output)
+        result = utils.run(cmd, verbose=True)
+        if result.stdout.count(mount_path):
+            utils.run(cmd_umount, verbose=True)
+
+        cmd = "mkdir -p %s" % mount_path
         status, output = session.cmd_status_output(cmd)
         if status:
-            raise error.TestError("Fail to create files on remote host '%s'", output)
-        cmd = "mount -t nfs %s:%s %s" %(local_ip, image_path, image_path)
+            raise error.TestError("Fail to create files on remote host '%s'" % output)
+        utils.run(cmd, verbose=True)
+
+        cmd = "mount -t nfs %s:%s %s" %(local_ip, nfs_path, mount_path)
         status, output = session.cmd_status_output(cmd)
         if status:
-            raise error.TestError("Fail to mount nfs on remote host '%s'", output)
+            raise error.TestError("Fail to mount nfs on remote host '%s'" % output)
+        utils.run(cmd, verbose=True)
+
+        # Update disk path
+        vm.destroy()
+
+        virsh.detach_disk(vm.name, "vda", "--config", debug=True)
+        virsh.attach_disk(vm.name, os.path.join(mount_path, disk_image), "vda", "--config --subdriver qcow2 --cache none", debug=True)
+
+        if second_disk == 'yes':
+            disk_xml = """
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='raw' cache='none'/>
+      <source file='/tmp/libvirt-shared.img'>
+        <seclabel model='selinux' relabel='no'/>
+        <seclabel model='dac' relabel='no'/>
+      </source>
+      <target dev='vdb' bus='virtio'/>
+      <readonly/>
+      <shareable/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </disk>
+            """
+            cmd = "touch /tmp/libvirt-shared.img"
+            status, output = session.cmd_status_output(cmd)
+            utils.run(cmd, verbose=True)
+
+            status, output = session.cmd_status_output("chmod 600 /tmp/libvirt-shared.img")
+            utils.run("chmod 666 /tmp/libvirt-shared.img", verbose=True)
+            utils.run("chcon system_u:object_r:svirt_image_t:s0 /tmp/libvirt-shared.img", verbose=True)
+            utils.run("virsh attach-device %s /dev/stdin --config" % vm.name, stdin=disk_xml, verbose=True)
+
+        vm.start()
 
         # Confirm VM can be accessed through network.
         vm.wait_for_login()
@@ -195,6 +241,20 @@ def run_virsh_migrate(test, params, env):
         ret_migrate = do_migration(delay, vm, dest_uri, options, extra)
         if vm_ref != vm_name:
             vm.name = vm_name
+
+        check_second_disk = True
+        if second_disk == 'yes':
+            if ret_migrate:
+                raise error.TestError("Migration with non-shared disk should fail.")
+            vm.verify_kernel_crash()
+            g_session = vm.wait_for_login()
+            status, g_output = g_session.cmd_status_output("touch /tmp/test.txt")
+            logging.debug("status = %s\n output '%s'", status, g_output)
+            if status:
+                check_second_disk = False
+            else:
+                g_session.cmd_status_output("rm -rf /tmp/test.txt")
+            ret_migrate = True
 
         # Recover libvirtd state.
         logging.debug("Recovering libvirtd status.")
@@ -296,13 +356,33 @@ def run_virsh_migrate(test, params, env):
     if os.path.exists(dest_xmlfile):
         os.remove(dest_xmlfile)
 
-    cmd = "umount %s" % image_path
+    # Cleanup nfs share
+    cmd = "umount %s" % mount_path
     status, output = session.cmd_status_output(cmd)
     if status:
-        logging.error("Fail to umount nfs on remote host '%s'", output)
+        logging.error("Fail to umount nfs on remote host '%s'" % output)
         exception = True
+    utils.run(cmd, verbose=True, ignore_status=True)
 
-    os.system("exportfs -u *:%s" % image_path)
+    cmd = "rm -rf %s" % mount_path
+    if status:
+        logging.error("Fail to remove mount path on remote host '%s'" % output)
+        exception = True
+    utils.run(cmd, verbose=True, ignore_status=True)
+
+    utils.run("exportfs -u *:%s" % nfs_path, verbose=True, ignore_status=True)
+
+    # Cleanup disk image
+    vm.destroy()
+
+    virsh.detach_disk(vm.name, "vda", "--config", debug=True)
+    virsh.attach_disk(vm.name, os.path.join(nfs_path, disk_image), "vda", "--config --subdriver qcow2 --cache none", debug=True)
+
+    if second_disk == 'yes':
+        virsh.detach_disk(vm.name, "vdb", "--config", debug=True)
+        cmd = "rm -rf /tmp/libvirt-shared.img"
+        status, output = session.cmd_status_output(cmd)
+        utils.run(cmd, verbose=True, ignore_status=True)
 
     if exception:
         raise error.TestError("Error occurred. \n%s: %s" % (detail.__class__, detail))
@@ -324,3 +404,5 @@ def run_virsh_migrate(test, params, env):
             raise error.TestFail("Wrong VM name %s on destination." % dname)
         if not check_dest_xml:
             raise error.TestFail("Wrong xml configuration on destination.")
+        if not check_second_disk:
+            raise error.TestFail("Source host has read-only disk: '%s'" % g_output)
