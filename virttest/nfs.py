@@ -2,7 +2,9 @@
 Basic nfs support for Linux host. It can support the remote
 nfs mount and the local nfs set up and mount.
 """
-import re, os, logging
+import re
+import os
+import logging
 from autotest.client import os_dep
 from autotest.client.shared import utils, service, error
 import utils_misc
@@ -20,8 +22,8 @@ def nfs_exported():
         return {}
 
     nfs_exported_dict = {}
-    for line in exportfs.strip().splitlines():
-        fs_info = line.split()
+    for fs_info in re.findall("[/\w+]+.*?\(.*?\)", exportfs, re.S):
+        fs_info = fs_info.strip().split()
         if len(fs_info) == 2:
             nfs_src = fs_info[0]
             access_ip = re.findall(r"(.*)\(", fs_info[1])[0]
@@ -35,9 +37,11 @@ def nfs_exported():
 
 
 class Exportfs(object):
+
     """
     Add or remove one entry to exported nfs file system.
     """
+
     def __init__(self, path, client="*", options="", ori_exported=None):
         if ori_exported is None:
             ori_exported = []
@@ -48,7 +52,6 @@ class Exportfs(object):
         self.entry_tag = "%s_%s" % (self.path, self.client)
         self.already_exported = False
         self.ori_options = ""
-
 
     def is_exported(self):
         """
@@ -62,7 +65,6 @@ class Exportfs(object):
             return True
         return False
 
-
     def need_reexport(self):
         """
         Check if the entry is already exported but the options are not
@@ -74,12 +76,11 @@ class Exportfs(object):
         ori_exported = self.ori_exported or nfs_exported()
         if self.is_exported():
             exported_options = ori_exported[self.entry_tag]
-            options = [ _ for _ in self.options if _ not in exported_options]
+            options = [_ for _ in self.options if _ not in exported_options]
             if options:
                 self.ori_options = exported_options
                 return True
         return False
-
 
     def unexport(self):
         """
@@ -91,7 +92,6 @@ class Exportfs(object):
         else:
             logging.warn("Target %s %s is not exported yet."
                          "Can not unexport it." % (self.client, self.path))
-
 
     def reset_export(self):
         """
@@ -133,10 +133,12 @@ class Exportfs(object):
 
 
 class Nfs(object):
+
     """
     Nfs class for handle nfs mount and umount. If a local nfs service is
     required, it will configure a local nfs server accroding the params.
     """
+
     def __init__(self, params):
         self.mount_dir = params.get("nfs_mount_dir")
         self.mount_options = params.get("nfs_mount_options")
@@ -150,12 +152,6 @@ class Nfs(object):
             os_dep.command("service")
             os_dep.command("exportfs")
             self.nfs_service = service.SpecificServiceManager("nfs")
-            self.enable_pattern = r"nfsd.*?running"
-            self.disable_pattern = r"nfsd.*?stopped"
-            if "Loaded: error" in self.nfs_service.status():
-                self.nfs_service = service.SpecificServiceManager("nfs-server")
-                self.enable_pattern = r"Active: active"
-                self.disable_pattern = r"Active: inactive"
 
             self.export_dir = (params.get("export_dir")
                                or self.mount_src.split(":")[-1])
@@ -164,24 +160,6 @@ class Nfs(object):
             self.exportfs = Exportfs(self.export_dir, self.export_ip,
                                      self.export_options)
             self.mount_src = "127.0.0.1:%s" % self.export_dir
-
-
-    def service_status(self):
-        """
-        Check nfs service status.
-
-        :return: The status of nfs service. It should be one of these:
-                 enabled, disabled or unknown status.
-        :rtype: string
-        """
-        output = self.nfs_service.status()
-        logging.debug("NFS sevice status is %s" % output)
-        if re.findall(self.enable_pattern, output):
-            return "enabled"
-        if re.findall(self.disable_pattern, output):
-            return "disabled"
-        return "unknown status"
-
 
     def is_mounted(self):
         """
@@ -192,7 +170,6 @@ class Nfs(object):
         """
         return utils_misc.is_mounted(self.mount_src, self.mount_dir, "nfs")
 
-
     def setup(self):
         """
         Setup NFS in host.
@@ -201,19 +178,26 @@ class Nfs(object):
         service and exportfs too.
         """
         if self.nfs_setup:
-            if self.service_status() != "enabled":
+            if not self.nfs_service.status():
                 logging.debug("Restart NFS service.")
                 self.nfs_service.restart()
 
             if not os.path.isdir(self.export_dir):
-                os.mkdir(self.export_dir)
+                os.makedirs(self.export_dir)
             self.exportfs.export()
             self.unexportfs_in_clean = not self.exportfs.already_exported
 
         logging.debug("Mount %s to %s" % (self.mount_src, self.mount_dir))
+        if os.path.exists(self.mount_dir) and not os.path.isdir(self.mount_dir):
+            raise OSError(
+                "Mount point %s is not a directory, check your setup." %
+                self.mount_dir)
+
+        if not os.path.isdir(self.mount_dir):
+            os.makedirs(self.mount_dir)
+
         utils_misc.mount(self.mount_src, self.mount_dir, "nfs",
                          perm=self.mount_options)
-
 
     def cleanup(self):
         """

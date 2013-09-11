@@ -20,9 +20,9 @@ def run_stop_continue(test, params, env):
     10) Do check operation (Optional)
     11) Do clean operation (Optional)
 
-    @param test: Kvm test object
-    @param params: Dictionary with the test parameters
-    @param env: Dictionary with test environment.
+    :param test: Kvm test object
+    :param params: Dictionary with the test parameters
+    :param env: Dictionary with test environment.
     """
     vm = env.get_vm(params["main_vm"])
     vm.verify_alive()
@@ -86,4 +86,4 @@ def run_stop_continue(test, params, env):
         if clean_op:
             error.context("Do clean operation: '%s'" % clean_op, logging.info)
             op_timeout = float(params.get("clean_op_timeout", 60))
-            session.cmd(clean_op, timeout=op_timeout)
+            session.cmd(clean_op, timeout=op_timeout, ignore_all_errors=True)

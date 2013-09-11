@@ -1,10 +1,12 @@
 """
 Virt-v2v test utility functions.
 
-@copyright: 2008-2012 Red Hat Inc.
+:copyright: 2008-2012 Red Hat Inc.
 """
 
-import os, re, logging
+import os
+import re
+import logging
 
 import ovirt
 from autotest.client import os_dep, utils
@@ -18,6 +20,7 @@ try:
     V2V_EXEC = os_dep.command('virt-v2v')
 except ValueError:
     V2V_EXEC = None
+
 
 def build_esx_no_verify(params):
     """
@@ -40,48 +43,46 @@ def build_esx_no_verify(params):
 
 
 class Uri(object):
+
     """
     This class is used for generating uri.
     """
+
     def __init__(self, hypervisor):
         if hypervisor is None:
             # kvm is a default hypervisor
             hypervisor = "kvm"
         self.hyper = hypervisor
 
-
     def get_uri(self, hostname):
         """
         Uri dispatcher.
 
-        @param hostname: String with host name.
+        :param hostname: String with host name.
         """
-        uri_func =  getattr(self, "_get_%s_uri" % self.hyper)
+        uri_func = getattr(self, "_get_%s_uri" % self.hyper)
         self.host = hostname
         return uri_func()
-
 
     def _get_kvm_uri(self):
         """
         Return kvm uri.
         """
-        uri = "qemu+ssh://"+ self.host + "/system"
+        uri = "qemu+ssh://" + self.host + "/system"
         return uri
-
 
     def _get_xen_uri(self):
         """
         Return xen uri.
         """
-        uri = "xen+ssh://"+ self.host + "/"
+        uri = "xen+ssh://" + self.host + "/"
         return uri
-
 
     def _get_esx_uri(self):
         """
         Return esx uri.
         """
-        uri = "esx://"+ self.host + "/?no_verify=1"
+        uri = "esx://" + self.host + "/?no_verify=1"
         return uri
 
 
@@ -89,9 +90,11 @@ class Uri(object):
 
 
 class Target(object):
+
     """
     This class is used for generating command options.
     """
+
     def __init__(self, target, uri):
         if target is None:
             # libvirt is a default target
@@ -99,15 +102,24 @@ class Target(object):
         self.tgt = target
         self.uri = uri
 
-
     def get_cmd_options(self, params):
         """
         Target dispatcher.
         """
         opts_func = getattr(self, "_get_%s_options" % self.tgt)
         self.params = params
-        return opts_func()
+        options = opts_func()
 
+        self.input = params.get('input')
+        self.files = params.get('files')
+        if self.files is not None:
+            # add files as its sequence
+            file_list = self.files.split().reverse()
+            for file in file_list:
+                options = " -f %s %s " % (file, options)
+        if self.input is not None:
+            options = " -i %s %s" % (self.input, options)
+        return options
 
     def _get_libvirt_options(self):
         """
@@ -118,6 +130,14 @@ class Target(object):
                   self.params.get('vms'))
         return options
 
+    def _get_libvirtxml_options(self):
+        """
+        Return command options.
+        """
+        options = " -os %s -b %s %s " % (self.params.get('storage'),
+                  self.params.get('network'),
+                  self.params.get('vms'))
+        return options
 
     def _get_ovirt_options(self):
         """
@@ -134,12 +154,12 @@ class Target(object):
 
 
 class LinuxVMCheck(object):
+
     """
     This class handles all basic linux VM check operations.
     """
     # Timeout definition for session login.
     LOGIN_TIMEOUT = 480
-
 
     def __init__(self, test, params, env):
         self.vm = None
@@ -155,10 +175,10 @@ class LinuxVMCheck(object):
         # libvirt is a default target
         if self.target == "libvirt" or self.target is None:
             self.vm = lvirt.VM(self.name, self.params, self.test.bindir,
-                              self.env.get("address_cache"))
+                               self.env.get("address_cache"))
         elif self.target == "ovirt":
             self.vm = ovirt.VMManager(self.params, self.test.bindir,
-                              self.env.get("address_cache"))
+                                      self.env.get("address_cache"))
         else:
             raise ValueError("Doesn't support %s target now" % self.target)
 
@@ -167,7 +187,6 @@ class LinuxVMCheck(object):
             self.vm.start()
         else:
             self.vm.start()
-
 
     def get_vm_kernel(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
@@ -184,7 +203,6 @@ class LinuxVMCheck(object):
                       (self.vm.name, kernel_version))
         return kernel_version
 
-
     def get_vm_os_info(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
         Get vm os info.
@@ -198,7 +216,6 @@ class LinuxVMCheck(object):
             output = session.cmd(cmd).split('\n', 1)[0]
         logging.debug("The os info is: %s" % output)
         return output
-
 
     def get_vm_os_vendor(self, session=None, nic_index=0,
                          timeout=LOGIN_TIMEOUT):
@@ -222,7 +239,6 @@ class LinuxVMCheck(object):
                       (self.vm.name, vendor))
         return vendor
 
-
     def get_vm_parted(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
         Get vm parted info.
@@ -236,7 +252,6 @@ class LinuxVMCheck(object):
             parted_output = session.cmd(cmd)
         logging.debug("The parted output is:\n %s" % parted_output)
         return parted_output
-
 
     def get_vm_modprobe_conf(self, session=None, nic_index=0,
                              timeout=LOGIN_TIMEOUT):
@@ -253,7 +268,6 @@ class LinuxVMCheck(object):
         logging.debug("modprobe conf is:\n %s" % modprobe_output)
         return modprobe_output
 
-
     def get_vm_modules(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
         Get vm modules list.
@@ -267,7 +281,6 @@ class LinuxVMCheck(object):
             modules = session.cmd(cmd)
         logging.debug("VM modules list is:\n %s" % modules)
         return modules
-
 
     def get_vm_pci_list(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
@@ -283,7 +296,6 @@ class LinuxVMCheck(object):
         logging.debug("VM pci devices list is:\n %s" % lspci_output)
         return lspci_output
 
-
     def get_vm_rc_local(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
         Get vm /etc/rc.local output.
@@ -296,7 +308,6 @@ class LinuxVMCheck(object):
         else:
             rc_output = session.cmd(cmd, ok_status=[0, 1])
         return rc_output
-
 
     def has_vmware_tools(self, session=None, nic_index=0,
                          timeout=LOGIN_TIMEOUT):
@@ -319,7 +330,6 @@ class LinuxVMCheck(object):
         else:
             return False
 
-
     def get_vm_tty(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
         Get vm tty config.
@@ -339,7 +349,6 @@ class LinuxVMCheck(object):
                 tty += session.cmd(cmd, ok_status=[0, 1])
         return tty
 
-
     def get_vm_video(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
         """
         Get vm video config.
@@ -353,8 +362,42 @@ class LinuxVMCheck(object):
             xorg_output = session.cmd(cmd, ok_status=[0, 1])
         return xorg_output
 
+    def is_net_virtio(self, session=None, nic_index=0, timeout=LOGIN_TIMEOUT):
+        """
+        Check whether vm's interface is virtio
+        """
+        cmd = "ls -l /sys/class/net/eth%s/device" % nic_index
+        if not session:
+            session = self.vm.wait_for_login(nic_index, timeout)
+            driver_output = session.cmd(cmd, ok_status=[0, 1])
+            session.close()
+        else:
+            driver_output = session.cmd(cmd, ok_status=[0, 1])
+
+        if re.search("virtio", driver_output.split('/')[-1]):
+            return True
+        return False
+
+    def is_disk_virtio(self, session=None, disk="/dev/vda",
+                       nic_index=0, timeout=LOGIN_TIMEOUT):
+        """
+        Check whether disk is virtio.
+        """
+        cmd = "fdisk -l %s" % disk
+        if not session:
+            session = self.vm.wait_for_login(nic_index, timeout)
+            disk_output = session.cmd(cmd, ok_status=[0, 1])
+            session.close()
+        else:
+            disk_output = session.cmd(cmd, ok_status=[0, 1])
+
+        if re.search(disk, disk_output):
+            return True
+        return False
+
 
 class WindowsVMCheck(object):
+
     """
     This class handles all basic windows VM check operations.
     """
@@ -365,9 +408,9 @@ def v2v_cmd(params):
     """
     Append cmd to 'virt-v2v' and execute, optionally return full results.
 
-    @param: params: A dictionary includes all of required parameters such as
+    :param params: A dictionary includes all of required parameters such as
                     'target', 'hypervisor' and 'hostname', etc.
-    @return: stdout of command
+    :return: stdout of command
     """
     if V2V_EXEC is None:
         raise ValueError('Missing command: virt-v2v')

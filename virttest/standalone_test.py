@@ -1,8 +1,25 @@
-import os, logging, imp, sys, time, traceback, Queue, glob, shutil
+import os
+import logging
+import imp
+import sys
+import time
+import traceback
+import Queue
+import glob
+import shutil
 from autotest.client.shared import error
 from autotest.client import utils
-import utils_misc, utils_params, utils_env, env_process, data_dir, bootstrap
-import storage, cartesian_config, arch, funcatexit, version
+import utils_misc
+import utils_params
+import utils_env
+import env_process
+import data_dir
+import bootstrap
+import storage
+import cartesian_config
+import arch
+import funcatexit
+import version
 
 global GUEST_NAME_LIST
 GUEST_NAME_LIST = None
@@ -15,6 +32,9 @@ def get_tag_index(options, params):
     if options.config:
         TAG_INDEX = -1
         return TAG_INDEX
+    # lvsb tests only have short names
+    if options.type == 'lvsb':
+        return 0
     name = params['name']
     if TAG_INDEX.get(name) is None:
         guest_name_list = get_guest_name_list(options)
@@ -37,11 +57,13 @@ def get_tag(params, index):
 
 
 class Test(object):
+
     """
     Mininal test class used to run a virt test.
     """
 
     env_version = utils_env.get_env_version()
+
     def __init__(self, params, options):
         self.params = utils_params.Params(params)
         self.bindir = data_dir.get_root_dir()
@@ -67,7 +89,6 @@ class Test(object):
         self.file_handler = None
         self.background_errors = Queue.Queue()
 
-
     def set_debugdir(self, debugdir):
         self.debugdir = os.path.join(debugdir, self.tag)
         self.outputdir = self.debugdir
@@ -82,26 +103,22 @@ class Test(object):
         utils_misc.set_log_file_dir(self.debugdir)
         self.logfile = os.path.join(self.debugdir, 'debug.log')
 
-
     def write_test_keyval(self, d):
         utils.write_keyval(self.debugdir, d)
 
-
     def start_file_logging(self):
         self.file_handler = configure_file_logging(self.logfile)
-
 
     def stop_file_logging(self):
         logger = logging.getLogger()
         logger.removeHandler(self.file_handler)
         self.file_handler.close()
 
-
     def verify_background_errors(self):
         """
         Verify if there are any errors that happened on background threads.
 
-        @raise Exception: Any exception stored on the background_errors queue.
+        :raise Exception: Any exception stored on the background_errors queue.
         """
         try:
             exc = self.background_errors.get(block=False)
@@ -109,7 +126,6 @@ class Test(object):
             pass
         else:
             raise exc[1], None, exc[2]
-
 
     def run_once(self):
         params = self.params
@@ -151,7 +167,7 @@ class Test(object):
                             raise error.TestError("Directory %s does not "
                                                   "exist" % (subtestdir))
                         subtest_dirs += data_dir.SubdirList(subtestdir,
-                                                         bootstrap.test_filter)
+                                                            bootstrap.test_filter)
 
                     # Verify if we have the correspondent source file for it
                     subtest_dirs += data_dir.SubdirList(self.testdir,
@@ -267,6 +283,7 @@ def print_stdout(sr, end=True):
 
 
 class Bcolors(object):
+
     """
     Very simple class with color support.
     """
@@ -325,28 +342,32 @@ def print_error(t_elapsed):
     """
     Print ERROR to stdout with ERROR (red) color.
     """
-    print_stdout(bcolors.ERROR + "ERROR" + bcolors.ENDC + " (%.2f s)" % t_elapsed)
+    print_stdout(bcolors.ERROR + "ERROR" +
+                 bcolors.ENDC + " (%.2f s)" % t_elapsed)
 
 
 def print_pass(t_elapsed):
     """
     Print PASS to stdout with PASS (green) color.
     """
-    print_stdout(bcolors.PASS + "PASS" + bcolors.ENDC + " (%.2f s)" % t_elapsed)
+    print_stdout(bcolors.PASS + "PASS" +
+                 bcolors.ENDC + " (%.2f s)" % t_elapsed)
 
 
 def print_fail(t_elapsed):
     """
     Print FAIL to stdout with FAIL (red) color.
     """
-    print_stdout(bcolors.FAIL + "FAIL" + bcolors.ENDC + " (%.2f s)" % t_elapsed)
+    print_stdout(bcolors.FAIL + "FAIL" +
+                 bcolors.ENDC + " (%.2f s)" % t_elapsed)
 
 
 def print_warn(t_elapsed):
     """
     Print WARN to stdout with WARN (yellow) color.
     """
-    print_stdout(bcolors.WARN + "WARN" + bcolors.ENDC + " (%.2f s)" % t_elapsed)
+    print_stdout(bcolors.WARN + "WARN" +
+                 bcolors.ENDC + " (%.2f s)" % t_elapsed)
 
 
 def reset_logging():
@@ -399,7 +420,7 @@ def create_config_files(options):
 
     If the files are not present, create them.
 
-    @param options: OptParser object with options.
+    :param options: OptParser object with options.
     """
     shared_dir = os.path.dirname(data_dir.get_data_dir())
     test_dir = os.path.dirname(shared_dir)
@@ -415,13 +436,15 @@ def create_config_files(options):
         test_dir = os.path.join(test_dir, parent_config_dir)
 
     if not os.path.exists(os.path.join(test_dir, "cfg")):
-        print_stdout("Setup error: %s does not exist" % os.path.join(test_dir, "cfg"))
+        print_stdout("Setup error: %s does not exist" %
+                     os.path.join(test_dir, "cfg"))
         print_stdout("Perhaps you have not specified -t?")
         sys.exit(1)
-
-    bootstrap.create_config_files(test_dir, shared_dir, interactive=False)
+    # lvsb test doesn't use shared configs
+    if options.type != 'lvsb':
+        bootstrap.create_config_files(test_dir, shared_dir, interactive=False)
+        bootstrap.create_guest_os_cfg(options.type)
     bootstrap.create_subtests_cfg(options.type)
-    bootstrap.create_guest_os_cfg(options.type)
 
 
 def get_paginator():
@@ -431,11 +454,12 @@ def get_paginator():
     except ValueError:
         return sys.stdout
 
+
 def get_cartesian_parser_details(cartesian_parser):
     """
     Print detailed information about filters applied to the cartesian cfg.
 
-    @param cartesian_parser: Cartesian parser object.
+    :param cartesian_parser: Cartesian parser object.
     """
     details = ""
     details += ("Tests produced by config file %s\n\n" %
@@ -474,8 +498,8 @@ def print_test_list(options, cartesian_parser):
 
     This function uses a paginator, if possible (inspired on git).
 
-    @param options: OptParse object with cmdline options.
-    @param cartesian_parser: Cartesian parser object with test options.
+    :param options: OptParse object with cmdline options.
+    :param cartesian_parser: Cartesian parser object with test options.
     """
     pipe = get_paginator()
     index = 0
@@ -496,7 +520,7 @@ def print_test_list(options, cartesian_parser):
                          shortname)
             if needs_root:
                 out = (basic_out + bcolors.yellow + " (requires root)" +
-                        bcolors.end + "\n")
+                       bcolors.end + "\n")
             else:
                 out = basic_out + "\n"
             pipe.write(out)
@@ -529,17 +553,20 @@ def get_guest_name_list(options):
     return GUEST_NAME_LIST
 
 
-
 def print_guest_list(options):
     """
     Helper function to pretty print the guest list.
 
     This function uses a paginator, if possible (inspired on git).
 
-    @param options: OptParse object with cmdline options.
-    @param cartesian_parser: Cartesian parser object with test options.
+    :param options: OptParse object with cmdline options.
+    :param cartesian_parser: Cartesian parser object with test options.
     """
     pipe = get_paginator()
+    # lvsb testing has no concept of guests
+    if options.type == 'lvsb':
+        pipe.write("No guest types available for lvsb testing")
+        return
     index = 0
     pipe.write("Searched %s for guest images\n" %
                os.path.join(data_dir.get_data_dir(), 'images'))
@@ -568,7 +595,7 @@ def bootstrap_tests(options):
     This function will check whether the JeOS is in the right location of the
     data dir, if not, it will download it non interactively.
 
-    @param options: OptParse object with program command line options.
+    :param options: OptParse object with program command line options.
     """
     test_dir = os.path.dirname(sys.modules[__name__].__file__)
 
@@ -645,10 +672,10 @@ def _job_report(job_elapsed_time, n_tests, n_tests_skipped, n_tests_failed):
     """
     Print to stdout and run log stats of our test job.
 
-    @param job_elapsed_time: Time it took for the tests to execute.
-    @param n_tests: Total Number of tests executed.
-    @param n_tests_skipped: Total Number of tests skipped.
-    @param n_tests_passed: Number of tests that passed.
+    :param job_elapsed_time: Time it took for the tests to execute.
+    :param n_tests: Total Number of tests executed.
+    :param n_tests_skipped: Total Number of tests skipped.
+    :param n_tests_passed: Number of tests that passed.
     """
     minutes, seconds = divmod(job_elapsed_time, 60)
     hours, minutes = divmod(minutes, 60)
@@ -691,8 +718,8 @@ def run_tests(parser, options):
     Runs the sequence of KVM tests based on the list of dctionaries
     generated by the configuration system, handling dependencies.
 
-    @param parser: Config parser object.
-    @return: True, if all tests ran passed, False if any of them failed.
+    :param parser: Config parser object.
+    :return: True, if all tests ran passed, False if any of them failed.
     """
     test_start_time = time.strftime('%Y-%m-%d-%H.%M.%S')
     logdir = options.logdir or os.path.join(data_dir.get_root_dir(), 'logs')
@@ -805,7 +832,7 @@ def run_tests(parser, options):
 
         # Add kvm module status
         dct["kvm_default"] = utils_misc.get_module_params(
-                                           dct.get("sysfs_dir", "/sys"), "kvm")
+            dct.get("sysfs_dir", "/sys"), "kvm")
 
         if dct.get("skip") == "yes":
             continue

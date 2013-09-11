@@ -1,4 +1,5 @@
 import logging
+import re
 from autotest.client.shared import error
 from virttest import virsh
 
@@ -18,12 +19,12 @@ def run_virsh_snapshot(test, params, env):
         snaps = virsh.snapshot_list(vm)
         for snap in snaps:
             try:
-                virsh.snapshot_delete(vm,snap)
+                virsh.snapshot_delete(vm, snap)
             except error.CmdError:
+                logging.debug("Can not remove snapshot %s.", snaps)
                 remove_failed = remove_failed + 1
 
         return remove_failed
-
 
     def test_file(session, filename, result):
         if filename is None:
@@ -33,14 +34,13 @@ def run_virsh_snapshot(test, params, env):
         if rv != result:
             raise error.TestFail("Failed file existence test - %s" % filename)
 
-
     def handle_error(errorstr, vm):
         rf = remove_snapshots(vm)
         if rf == 0:
             raise error.TestFail(errorstr)
         else:
             raise error.TestFail("%s (Failed to remove %d snapshots)"
-                                 % (errorstr,rf))
+                                 % (errorstr, rf))
 
     def normalize_state(domstate):
         if domstate in ["offline", "shutoff", "shut off"]:
@@ -52,35 +52,34 @@ def run_virsh_snapshot(test, params, env):
         else:
             return domstate
 
-
     def check_info(i1, i2, errorstr="Values differ"):
         if normalize_state(i1) != normalize_state(i2):
-            error.TestFail("%s (%s != %s)" % (errorstr, i1,i2))
-
+            error.TestFail("%s (%s != %s)" % (errorstr, i1, i2))
 
     vm_name = params.get("main_vm")
-    offline = (params.get("snapshot_shutdown","no") == "yes")
+    offline = (params.get("snapshot_shutdown", "no") == "yes")
     vm = env.get_vm(vm_name)
 
     logging.info("Verify that no snapshot exist for %s", vm_name)
 
     snl = virsh.snapshot_list(vm_name)
     if len(snl) != 0:
-        raise error.TestFail("Guest has existing snapshots - %s" % str(snl))
+        if bool(remove_snapshots(vm_name)):
+            raise error.TestFail("Snapshot on guest can not be removed.")
 
     logging.info("Create snapshot hierarchy for %s", vm_name)
-    snapshot_info = [ {"Domain":vm_name, "State": normalize_state("running"),
-                       "Children":"1", "Descendants":"3", "to_create":None,
-                        "to_delete":None},
-                      {"Domain":vm_name, "State": normalize_state("paused"),
-                       "Children":"1", "Descendants":"2",
-                       "to_create":"/root/sn1", "to_delete":None},
-                      {"Domain":vm_name, "State": normalize_state("running"),
-                       "Children":"1", "Descendants":"1",
-                       "to_create":"/root/sn2", "to_delete":None},
-                      {"Domain":vm_name, "State": normalize_state("paused"),
-                       "Children":"0", "Descendants":"0", "to_create":None,
-                       "to_delete":"/root/sn1"}]
+    snapshot_info = [{"Domain": vm_name, "State": normalize_state("running"),
+                      "Children": "1", "Descendants": "3", "to_create": None,
+                      "to_delete": None},
+                     {"Domain": vm_name, "State": normalize_state("paused"),
+                      "Children": "1", "Descendants": "2",
+                      "to_create": "/root/sn1", "to_delete": None},
+                     {"Domain": vm_name, "State": normalize_state("running"),
+                      "Children": "1", "Descendants": "1",
+                      "to_create": "/root/sn2", "to_delete": None},
+                     {"Domain": vm_name, "State": normalize_state("paused"),
+                      "Children": "0", "Descendants": "0", "to_create": None,
+                      "to_delete": "/root/sn1"}]
     last_snapshot = None
     for sni in snapshot_info:
         sni["Parent"] = last_snapshot
@@ -95,7 +94,12 @@ def run_virsh_snapshot(test, params, env):
         elif sni["State"] == normalize_state("paused"):
             vm.pause()
 
-        last_snapshot = virsh.snapshot_create(vm_name)
+        snapshot_result = virsh.snapshot_create(vm_name)
+        if snapshot_result.exit_status:
+            raise error.TestFail("Failed to create snapshot. Error:%s."
+                                 % snapshot_result.stderr.strip())
+        last_snapshot = re.search(
+            "\d+", snapshot_result.stdout.strip()).group(0)
         sni["Name"] = last_snapshot
 
         if sni["State"] == normalize_state("paused"):
@@ -111,7 +115,8 @@ def run_virsh_snapshot(test, params, env):
             infos = virsh.snapshot_info(vm_name, sni["Name"])
             check_info(infos["Name"], sni["Name"], "Incorrect snapshot name")
             check_info(infos["Domain"], sni["Domain"], "Incorrect domain name")
-            check_info(infos["State"], sni["State"], "Incorrect snapshot state")
+            check_info(infos["State"], sni[
+                       "State"], "Incorrect snapshot state")
             check_info(infos["Parent"], sni["Parent"],
                        "Incorrect snapshot parent")
             check_info(infos["Children"], sni["Children"],
@@ -122,15 +127,19 @@ def run_virsh_snapshot(test, params, env):
         except error.CmdError:
             handle_error("Failed getting snapshots info", vm_name)
         except error.TestFail, e:
-            handle_error(str(e),vm_name)
+            handle_error(str(e), vm_name)
         logging.info("Snapshot %s verified", sni["Name"])
-
 
     logging.info("Test snapshot switching")
     for sni in snapshot_info:
         try:
-            virsh.snapshot_revert(vm_name,sni["Name"])
-            state = normalize_state(virsh.domstate(vm_name))
+            # Assure VM is shut off before revert.
+            virsh.destroy(vm_name)
+            result = virsh.snapshot_revert(vm_name, sni["Name"])
+            if result.exit_status:
+                raise error.TestFail("Snapshot revert failed.\n"
+                                     "Error: %s." % result.stderr)
+            state = normalize_state(virsh.domstate(vm_name).stdout.strip())
             if state != sni["State"]:
                 raise error.TestFail("Incorrect state after revert - %s"
                                      % (sni["Name"]))

@@ -48,7 +48,8 @@ def run_virsh_migrate(test, params, env):
         logging.info("Sleeping %d seconds before migration" % delay)
         time.sleep(delay)
         # Migrate the guest.
-        successful = vm.migrate(dest_uri, options, extra, True, True).exit_status
+        successful = vm.migrate(
+            dest_uri, options, extra, True, True).exit_status
         logging.info("successful: %d", successful)
         if int(successful) != 0:
             logging.error("Migration failed for %s." % vm_name)
@@ -57,7 +58,7 @@ def run_virsh_migrate(test, params, env):
         if options.count("dname") or extra.count("dname"):
             vm.name = extra.split()[1].strip()
 
-        if vm.is_alive(): # vm.connect_uri was updated
+        if vm.is_alive():  # vm.connect_uri was updated
             logging.info("Alive guest found on destination %s." % dest_uri)
         else:
             logging.error("VM not alive on destination %s" % dest_uri)
@@ -66,7 +67,6 @@ def run_virsh_migrate(test, params, env):
         # Throws exception if console shows panic message
         vm.verify_kernel_crash()
         return True
-
 
     vm_name = params.get("main_vm")
     vm = env.get_vm(params["main_vm"])
@@ -323,12 +323,12 @@ def run_virsh_migrate(test, params, env):
                 back_options = options
             if back_extra == 'default':
                 back_extra = extra
-            ret_migrate = do_migration(delay, vm, back_dest_uri, back_options, back_extra)
+            ret_migrate = do_migration(
+                delay, vm, back_dest_uri, back_options, back_extra)
 
     except Exception, detail:
         exception = True
         logging.error("%s: %s" % (detail.__class__, detail))
-
 
     # Whatever error occurs, we have to clean up all environment.
     # Make sure vm.connect_uri is the destination uri.
@@ -346,7 +346,7 @@ def run_virsh_migrate(test, params, env):
     if not virsh.domain_exists(vm_name, uri=src_uri):
         vm.define(vm_xmlfile_bak)
     else:
-        #if not vm.shutdown():
+        # if not vm.shutdown():
         vm.destroy()
 
     # Cleanup source.
@@ -385,7 +385,8 @@ def run_virsh_migrate(test, params, env):
         utils.run(cmd, verbose=True, ignore_status=True)
 
     if exception:
-        raise error.TestError("Error occurred. \n%s: %s" % (detail.__class__, detail))
+        raise error.TestError(
+            "Error occurred. \n%s: %s" % (detail.__class__, detail))
 
     # Check test result.
     if status_error == 'yes':

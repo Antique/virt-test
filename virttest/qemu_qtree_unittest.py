@@ -2,8 +2,8 @@
 """
 This is a unittest for qemu_qtree library.
 
-@author: Lukas Doktor <ldoktor@redhat.com>
-@copyright: 2012 Red Hat, Inc.
+:author: Lukas Doktor <ldoktor@redhat.com>
+:copyright: 2012 Red Hat, Inc.
 """
 __author__ = """Lukas Doktor (ldoktor@redhat.com)"""
 
@@ -17,7 +17,9 @@ OFFSET_PER_LEVEL = qemu_qtree.OFFSET_PER_LEVEL
 
 # Dummy classes and functions
 class ParamsDict(dict):
+
     """ params like dictionary """
+
     def objects(self, item):
         if self.get(item):
             return self.get(item).split(' ')
@@ -120,12 +122,16 @@ dev_dummy_mmio = """dev: fw_cfg, id ""
   mmio ffffffffffffffff/0000000000000002
   mmio ffffffffffffffff/0000000000000001"""
 
-info_block = ('ide0-hd0: removable=0 io-status=ok file=/tmp/vl.UWzrkU backing_'
-              'file=/dummy/directory/f16-64.qcow2 ro=1 drv=qcow2 encrypted=0 '
-              'bps=0 bps_rd=0 bps_wr=0 iops=0 iops_rd=0 iops_wr=0\n')
-info_block += ('usb2.6: removable=0 io-status=ok file=/tmp/stg4.qcow2 ro=0 '
-               'drv=qcow2 encrypted=0 bps=0 bps_rd=0 bps_wr=0 iops=0 iops_rd=0'
-               ' iops_wr=0')
+info_block = {'ide0-hd0': {'removable': 0, 'io-status': 'ok',
+                           'file': '/tmp/vl.UWzrkU',
+                           'backing_file': '/dummy/directory/f16-64.qcow2',
+                           'ro': 1, 'drv': 'qcow2', 'encrypted': 0, 'bps': 0,
+                           'bps_rd': 0, 'bps_wr': 0, 'iops': 0, 'iops_rd': 0,
+                           'iops_wr': 0},
+              'usb2.6': {'removable': 0, 'io-status': 'ok',
+                         'file': '/tmp/stg4.qcow2', 'ro': 0, 'drv': 'qcow2',
+                         'encrypted': 0, 'bps': 0, 'bps_rd': 0, 'bps_wr': 0,
+                         'iops': 0, 'iops_rd': 0, 'iops_wr': 0}}
 
 guest_proc_scsi = """Attached devices:
 Host: scsi4 Channel: 00 Id: 00 Lun: 00
@@ -149,7 +155,9 @@ params = ParamsDict({'images': 'image1 stg4',
 
 
 class QtreeContainerTest(unittest.TestCase):
+
     """ QtreeContainer tests """
+
     def test_qtree(self):
         """ Correct workflow """
         reference_nodes = [qemu_qtree.QtreeDisk, qemu_qtree.QtreeBus,
@@ -170,8 +178,8 @@ class QtreeContainerTest(unittest.TestCase):
         nodes = qtree.get_nodes()
 
         self.assertEqual(len(nodes), len(reference_nodes), ("Number of parsed "
-                            "nodes is not equal to the number of qtree nodes. "
-                            "%s != %s" % (len(nodes), len(reference_nodes))))
+                                                            "nodes is not equal to the number of qtree nodes. "
+                                                            "%s != %s" % (len(nodes), len(reference_nodes))))
 
         for i in xrange(len(nodes)):
             self.assertTrue(isinstance(nodes[i], reference_nodes[i]),
@@ -193,7 +201,9 @@ class QtreeContainerTest(unittest.TestCase):
 
 
 class QtreeDiskContainerTest(unittest.TestCase):
+
     """ QtreeDiskContainer tests """
+
     def setUp(self):
         # Get rid of logging errors
         def dumm(*args, **kvargs):
@@ -235,12 +245,13 @@ class QtreeDiskContainerTest(unittest.TestCase):
         """ Whole workflow with bad data """
         disks = self.disks
         # missing disk in info block
-        _info_block = info_block.split('\n')[1]
+        _info_block = info_block.copy()
+        _info_block.pop('ide0-hd0')
         # snapshot in info qtree but not in params
-        _info_block = _info_block.replace('file=/tmp/stg4.qcow2',
-                                'file=none.qcow2 backing_file=/tmp/stg4.qcow2')
+        _info_block['usb2.6']['file'] = 'none.qcow2'
+        _info_block['usb2.6']['backing_file'] = '/tmp/stg4.qcow2'
         # additional disk in info block
-        _info_block += '\nmissing_bad_disk1:\n  \n'
+        _info_block['missing_bad_disk1'] = {}
         # additional disk in params
         _params = ParamsDict(params)
         _params['images'] += ' bad_disk2'
@@ -261,7 +272,9 @@ Host: scsi1 Channel: 00 Id: 00 Lun: 00
 
 
 class KvmQtreeClassTest(unittest.TestCase):
+
     """ Additional tests for qemu_qtree classes """
+
     def test_qtree_bus_bus(self):
         """ Bus' child can't be Bus() """
         test = qemu_qtree.QtreeBus()

@@ -8,6 +8,7 @@ from autotest.client import utils, os_dep
 
 
 class LibvirtdError(Exception):
+
     """
     Base Error of libvirtd.
     """
@@ -15,9 +16,11 @@ class LibvirtdError(Exception):
 
 
 class LibvirtdActionError(LibvirtdError):
+
     """
     Error in service command.
     """
+
     def __init__(self, action, detail):
         LibvirtdError.__init__(self)
         self.action = action
@@ -29,9 +32,11 @@ class LibvirtdActionError(LibvirtdError):
 
 
 class LibvirtdActionUnknownError(LibvirtdActionError):
+
     """
-    Error in service command when service name is unkown.
+    Error in service command when service name is unknown.
     """
+
     def __init__(self, action):
         self.action = action
         self.detail = 'Action %s is Unknown.' % self.action
@@ -42,7 +47,7 @@ try:
     LIBVIRTD = "libvirtd"
 except ValueError:
     LIBVIRTD = None
-    logging.warning("Libvirtd service is not availible in host, "
+    logging.warning("Libvirtd service is not available in host, "
                     "utils_libvirtd module will not function normally")
 
 
@@ -115,7 +120,7 @@ def libvirtd_restart():
     """
     try:
         service_libvirtd_control('restart')
-        logging.debug("Restarted libvirtd successfuly")
+        logging.debug("Restarted libvirtd successfully")
         return libvirtd_wait_for_start()
     except LibvirtdActionError, detail:
         logging.debug("Failed to restart libvirtd:\n%s", detail)
@@ -128,7 +133,7 @@ def libvirtd_stop():
     """
     try:
         service_libvirtd_control('stop')
-        logging.debug("Stop libvirtd successfuly")
+        logging.debug("Stop libvirtd successfully")
         return True
     except LibvirtdActionError, detail:
         logging.debug("Failed to stop libvirtd:\n%s", detail)
@@ -141,7 +146,7 @@ def libvirtd_start():
     """
     try:
         service_libvirtd_control('start')
-        logging.debug("Start libvirtd successfuly")
+        logging.debug("Start libvirtd successfully")
         return libvirtd_wait_for_start()
     except LibvirtdActionError, detail:
         logging.debug("Failed to start libvirtd:\n%s", detail)
@@ -159,7 +164,7 @@ def libvirtd_is_running():
         return False
 
 
-def libvirtd_wait_for_start(timeout=10, session=None):
+def libvirtd_wait_for_start(timeout=60, session=None):
     """
     Wait n seconds for libvirt to start. Default is 10 seconds.
     """

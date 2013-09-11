@@ -3,6 +3,7 @@ from autotest.client.shared import error
 from virttest import libvirt_vm, virsh
 from virttest.libvirt_xml import vm_xml
 
+
 def run_virsh_domif_setlink_getlink(test, params, env):
     """
     Test command: virsh domif-setlink and domif-getlink.
@@ -18,10 +19,10 @@ def run_virsh_domif_setlink_getlink(test, params, env):
         """
         Set the domain link state
 
-        @param: vm : domain name
-        @param: device : domain virtual interface
-        @param: opration : domain virtual interface state
-        @param: options : some options like --config
+        :param vm : domain name
+        :param device : domain virtual interface
+        :param opration : domain virtual interface state
+        :param options : some options like --config
 
         """
 
@@ -31,9 +32,9 @@ def run_virsh_domif_setlink_getlink(test, params, env):
         """
         Get the domain link state
 
-        @param: vm : domain name
-        @param: device : domain virtual interface
-        @param: options : some options like --config
+        :param vm : domain name
+        :param device : domain virtual interface
+        :param options : some options like --config
 
         """
 
@@ -106,7 +107,7 @@ def run_virsh_domif_setlink_getlink(test, params, env):
         cmd = ("ip add |grep -i '%s' -B1|grep -i 'state %s' "
                % (mac_address, if_operation))
         cmd_status, output = session.cmd_status_output(cmd)
-        logging.info("====%s==%s===", cmd_status, output )
+        logging.info("====%s==%s===", cmd_status, output)
         # Set the link up make host connect with vm
         domif_setlink(vm_name, device, "up", "")
         # Bring up referenced guest nic
