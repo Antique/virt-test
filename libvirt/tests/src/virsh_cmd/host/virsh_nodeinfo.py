@@ -48,10 +48,22 @@ def run_virsh_nodeinfo(test, params, env):
                "awk '{print $4}' | awk -F. '{print $1}'")
         cmd_result = utils.run(cmd, ignore_status=True)
         cpu_frequency_os = cmd_result.stdout.strip()
-        print cpu_frequency_os
-        if not re.match(cpu_frequency_nodeinfo, cpu_frequency_os):
+        logging.debug("cpu_frequency_nodeinfo=%s cpu_frequency_os=%s",
+                      cpu_frequency_nodeinfo, cpu_frequency_os)
+        #
+        # Matching CPU Frequency is not an exact science in todays modern
+        # processors and OS's.  The CPU's can vary their executing speed
+        # based on current workload in order to save energy and keep cool.
+        # Thus since we're getting the values at disparate points in time,
+        # we cannot necessarily do a pure comparison.
+        # So, let's get the absolute value of the difference and ensure
+        # that it's within 10 percent of each value to give us enough of
+        # a "fudge" factor to declare "close enough"
+        diffval = abs(int(cpu_frequency_nodeinfo) - int(cpu_frequency_os))
+        if float(diffval)/float(cpu_frequency_nodeinfo) > 0.10 or \
+           float(diffval)/float(cpu_frequency_os) > 0.10:
             raise error.TestFail("Virsh nodeinfo output didn't match CPU "
-                                 "frequency")
+                                 "frequency within 10 percent")
 
         # Check CPU socket(s)
         cpu_sockets_nodeinfo = int(
