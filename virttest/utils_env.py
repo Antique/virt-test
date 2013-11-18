@@ -97,6 +97,7 @@ class Env(UserDict.IterableUserDict):
         empty = {"version": version}
         self._filename = filename
         self.tcpdump = None
+        self.params = None
         if filename:
             try:
                 if os.path.isfile(filename):
@@ -138,6 +139,8 @@ class Env(UserDict.IterableUserDict):
         f = open(filename, "w")
         cPickle.dump(self.data, f)
         f.close()
+        if self.params:
+            self.start_tcpdump(self.params)
 
     def get_all_vms(self):
         """
@@ -294,6 +297,7 @@ class Env(UserDict.IterableUserDict):
             logging.warn("Output: %s", msg)
 
     def start_tcpdump(self, params):
+        self.params = params
         if self.tcpdump is None:
             self._start_tcpdump(params)
         else:
