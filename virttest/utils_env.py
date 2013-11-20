@@ -9,6 +9,7 @@ import utils_misc
 import virt_vm
 import aexpect
 import remote
+import threading
 
 ENV_VERSION = 1
 
@@ -20,47 +21,48 @@ def get_env_version():
 class EnvSaveError(Exception):
     pass
 
-def _update_address_cache(address_cache, line):
-    if re.search("Your.IP", line, re.IGNORECASE):
-        matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
-        if matches:
-            address_cache["last_seen"] = matches[0]
+def _update_address_cache(address_cache, lock, line):
+    with lock:
+        if re.search("Your.IP", line, re.IGNORECASE):
+            matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
+            if matches:
+                address_cache["last_seen"] = matches[0]
 
-    if re.search("Client.Ethernet.Address", line, re.IGNORECASE):
-        matches = re.findall(r"\w*:\w*:\w*:\w*:\w*:\w*", line)
-        if matches and address_cache.get("last_seen"):
-            mac_address = matches[0].lower()
-            last_time = address_cache.get("time_%s" % mac_address, 0)
-            last_ip = address_cache.get("last_seen")
-            cached_ip = address_cache.get(mac_address)
+        if re.search("Client.Ethernet.Address", line, re.IGNORECASE):
+            matches = re.findall(r"\w*:\w*:\w*:\w*:\w*:\w*", line)
+            if matches and address_cache.get("last_seen"):
+                mac_address = matches[0].lower()
+                last_time = address_cache.get("time_%s" % mac_address, 0)
+                last_ip = address_cache.get("last_seen")
+                cached_ip = address_cache.get(mac_address)
 
-            if (time.time() - last_time > 5 or cached_ip != last_ip):
-                logging.debug("(address cache) DHCP lease OK: %s --> %s",
-                              mac_address, address_cache.get("last_seen"))
+                if (time.time() - last_time > 5 or cached_ip != last_ip):
+                    logging.debug("(address cache) DHCP lease OK: %s --> %s",
+                                  mac_address, address_cache.get("last_seen"))
 
-            address_cache[mac_address] = address_cache.get("last_seen")
-            address_cache["time_%s" % mac_address] = time.time()
-            del address_cache["last_seen"]
-        elif matches:
-            address_cache["last_seen_mac"] = matches[0]
+                address_cache[mac_address] = address_cache.get("last_seen")
+                address_cache["time_%s" % mac_address] = time.time()
+                del address_cache["last_seen"]
+            elif matches:
+                address_cache["last_seen_mac"] = matches[0]
 
-    if re.search("Requested.IP", line, re.IGNORECASE):
-        matches = matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
-        if matches and address_cache.get("last_seen_mac"):
-            ip_address = matches[0]
-            mac_address = address_cache.get("last_seen_mac")
-            last_time = address_cache.get("time_%s" % mac_address, 0)
+        if re.search("Requested.IP", line, re.IGNORECASE):
+            matches = matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
+            if matches and address_cache.get("last_seen_mac"):
+                ip_address = matches[0]
+                mac_address = address_cache.get("last_seen_mac")
+                last_time = address_cache.get("time_%s" % mac_address, 0)
 
-            if time.time() - last_time > 10:
-                logging.debug("(address cache) DHCP lease OK: %s --> %s",
-                              mac_address, ip_address)
+                if time.time() - last_time > 10:
+                    logging.debug("(address cache) DHCP lease OK: %s --> %s",
+                                  mac_address, ip_address)
 
-            address_cache[mac_address] = ip_address
-            address_cache["time_%s" % mac_address] = time.time()
-            del address_cache["last_seen_mac"]
+                address_cache[mac_address] = ip_address
+                address_cache["time_%s" % mac_address] = time.time()
+                del address_cache["last_seen_mac"]
 
 
-def _tcpdump_handler(address_cache, filename, line):
+def _tcpdump_handler(address_cache, filename, lock, line):
     """
     Helper for handler tcpdump output.
 
@@ -73,7 +75,7 @@ def _tcpdump_handler(address_cache, filename, line):
     except Exception, reason:
         logging.warn("Can't log tcpdump output, '%s'", reason)
 
-    _update_address_cache(address_cache, line)
+    _update_address_cache(address_cache, lock, line)
 
 
 class Env(UserDict.IterableUserDict):
@@ -97,7 +99,7 @@ class Env(UserDict.IterableUserDict):
         empty = {"version": version}
         self._filename = filename
         self.tcpdump = None
-        self.params = None
+        self.cpickle_lock = threading.RLock()
         if filename:
             try:
                 if os.path.isfile(filename):
@@ -132,15 +134,13 @@ class Env(UserDict.IterableUserDict):
         :param filename: Filename to pickle the dict into.  If not supplied,
                 use the filename from which the dict was loaded.
         """
-        self.stop_tcpdump()
-        filename = filename or self._filename
-        if filename is None:
-            raise EnvSaveError("No filename specified for this env file")
-        f = open(filename, "w")
-        cPickle.dump(self.data, f)
-        f.close()
-        if self.params:
-            self.start_tcpdump(self.params)
+        with self.cpickle_lock:
+            filename = filename or self._filename
+            if filename is None:
+                raise EnvSaveError("No filename specified for this env file")
+            f = open(filename, "w")
+            cPickle.dump(self.data, f)
+            f.close()
 
     def get_all_vms(self):
         """
@@ -278,7 +278,7 @@ class Env(UserDict.IterableUserDict):
             self.tcpdump = aexpect.ShellSession(
                 login_cmd,
                 output_func=_update_address_cache,
-                output_params=(self.data["address_cache"],))
+                output_params=(self.data["address_cache"], self.cpickle_lock,))
 
             remote.handle_prompts(self.tcpdump, username, password, prompt)
             self.tcpdump.sendline(cmd)
@@ -287,7 +287,8 @@ class Env(UserDict.IterableUserDict):
             self.tcpdump = aexpect.Tail(command=cmd,
                                         output_func=_tcpdump_handler,
                                         output_params=(self.data["address_cache"],
-                                                       "tcpdump.log",))
+                                                       "tcpdump.log",
+                                                       self.cpickle_lock,))
 
         if utils_misc.wait_for(lambda: not self.tcpdump.is_alive(),
                                0.1, 0.1, 1.0):
