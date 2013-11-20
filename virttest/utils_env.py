@@ -65,6 +65,9 @@ class Env(UserDict.IterableUserDict):
             logging.warn("Creating new, empty env file")
             self.data = empty
 
+    def __reduce__(self):
+        return (self.__class__, (self.data, self._filename))
+
     def save(self, filename=None):
         """
         Pickle the contents of the Env object into a file.
