@@ -477,14 +477,14 @@ def preprocess(test, params, env):
             env["tcpdump"] = aexpect.ShellSession(
                 login_cmd,
                 output_func=_update_address_cache,
-                output_params=(env["address_cache"],))
+                output_params=(env,))
             remote.handle_prompts(env["tcpdump"], username, password, prompt)
             env["tcpdump"].sendline(cmd)
         else:
             env["tcpdump"] = aexpect.Tail(
                 command=cmd,
                 output_func=_tcpdump_handler,
-                output_params=(env["address_cache"], "tcpdump.log",))
+                output_params=(env, "tcpdump.log",))
 
         if utils_misc.wait_for(lambda: not env["tcpdump"].is_alive(),
                                0.1, 0.1, 1.0):
@@ -874,47 +874,52 @@ def postprocess_on_error(test, params, env):
     params.update(params.object_params("on_error"))
 
 
-def _update_address_cache(address_cache, line):
-    if re.search("Your.IP", line, re.IGNORECASE):
-        matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
-        if matches:
-            address_cache["last_seen"] = matches[0]
+def _update_address_cache(env, line):
+    env.save_lock.acquire()
+    try:
+        if re.search("Your.IP", line, re.IGNORECASE):
+            matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
+            if matches:
+                env["address_cache"]["last_seen"] = matches[0]
 
-    if re.search("Client.Ethernet.Address", line, re.IGNORECASE):
-        matches = re.findall(r"\w*:\w*:\w*:\w*:\w*:\w*", line)
-        if matches and address_cache.get("last_seen"):
-            mac_address = matches[0].lower()
-            last_time = address_cache.get("time_%s" % mac_address, 0)
-            last_ip = address_cache.get("last_seen")
-            cached_ip = address_cache.get(mac_address)
+        if re.search("Client.Ethernet.Address", line, re.IGNORECASE):
+            matches = re.findall(r"\w*:\w*:\w*:\w*:\w*:\w*", line)
+            if matches and env["address_cache"].get("last_seen"):
+                mac_address = matches[0].lower()
+                last_time = env["address_cache"].get("time_%s" % mac_address, 0)
+                last_ip = env["address_cache"].get("last_seen")
+                cached_ip = env["address_cache"].get(mac_address)
 
-            if (time.time() - last_time > 5 or cached_ip != last_ip):
-                logging.debug("(address cache) DHCP lease OK: %s --> %s",
-                              mac_address, address_cache.get("last_seen"))
+                if (time.time() - last_time > 5 or cached_ip != last_ip):
+                    logging.debug("(address cache) DHCP lease OK: %s --> %s",
+                                  mac_address,
+                                  env["address_cache"].get("last_seen"))
 
-            address_cache[mac_address] = address_cache.get("last_seen")
-            address_cache["time_%s" % mac_address] = time.time()
-            del address_cache["last_seen"]
-        elif matches:
-            address_cache["last_seen_mac"] = matches[0]
+                env["address_cache"][mac_address] = env["address_cache"].get("last_seen")
+                env["address_cache"]["time_%s" % mac_address] = time.time()
+                del env["address_cache"]["last_seen"]
+            elif matches:
+                env["address_cache"]["last_seen_mac"] = matches[0]
 
-    if re.search("Requested.IP", line, re.IGNORECASE):
-        matches = matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
-        if matches and address_cache.get("last_seen_mac"):
-            ip_address = matches[0]
-            mac_address = address_cache.get("last_seen_mac")
-            last_time = address_cache.get("time_%s" % mac_address, 0)
+        if re.search("Requested.IP", line, re.IGNORECASE):
+            matches = matches = re.findall(r"\d*\.\d*\.\d*\.\d*", line)
+            if matches and env["address_cache"].get("last_seen_mac"):
+                ip_address = matches[0]
+                mac_address = env["address_cache"].get("last_seen_mac")
+                last_time = env["address_cache"].get("time_%s" % mac_address, 0)
 
-            if time.time() - last_time > 10:
-                logging.debug("(address cache) DHCP lease OK: %s --> %s",
-                              mac_address, ip_address)
+                if time.time() - last_time > 10:
+                    logging.debug("(address cache) DHCP lease OK: %s --> %s",
+                                  mac_address, ip_address)
 
-            address_cache[mac_address] = ip_address
-            address_cache["time_%s" % mac_address] = time.time()
-            del address_cache["last_seen_mac"]
+                env["address_cache"][mac_address] = ip_address
+                env["address_cache"]["time_%s" % mac_address] = time.time()
+                del env["address_cache"]["last_seen_mac"]
+    finally:
+        env.save_lock.release()
 
 
-def _tcpdump_handler(address_cache, filename, line):
+def _tcpdump_handler(env, filename, line):
     """
     Helper for handler tcpdump output.
 
@@ -927,7 +932,7 @@ def _tcpdump_handler(address_cache, filename, line):
     except Exception, reason:
         logging.warn("Can't log tcpdump output, '%s'", reason)
 
-    _update_address_cache(address_cache, line)
+    _update_address_cache(env, line)
 
 
 def _take_screendumps(test, params, env):

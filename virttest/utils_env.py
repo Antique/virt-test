@@ -2,6 +2,8 @@ import cPickle
 import UserDict
 import os
 import logging
+import threading
+
 import virt_vm
 
 ENV_VERSION = 1
@@ -33,6 +35,7 @@ class Env(UserDict.IterableUserDict):
         :param version: Required env version (int).
         """
         UserDict.IterableUserDict.__init__(self)
+        self.save_lock = threading.RLock()
         empty = {"version": version}
         self._filename = filename
         if filename:
@@ -72,9 +75,13 @@ class Env(UserDict.IterableUserDict):
         filename = filename or self._filename
         if filename is None:
             raise EnvSaveError("No filename specified for this env file")
-        f = open(filename, "w")
-        cPickle.dump(self.data, f)
-        f.close()
+        self.save_lock.acquire()
+        try:
+            f = open(filename, "w")
+            cPickle.dump(self.data, f)
+            f.close()
+        finally:
+            self.save_lock.release()
 
     def get_all_vms(self):
         """
