@@ -457,9 +457,8 @@ def preprocess(test, params, env):
                                                 image_name_only)
 
     # Start tcpdump if it isn't already running
-    # This thread will be automatically handled by the environment object,
-    # no need to explicitly close it. The fact it has to be started here
-    # is so that the test params have to be honored.
+    # The fact it has to be started here is so that the test params
+    # have to be honored.
     env.start_tcpdump(params)
 
     # Destroy and remove VMs that are no longer needed in the environment
@@ -669,6 +668,9 @@ def postprocess(test, params, env):
         _screendump_thread_termination_event.set()
         _screendump_thread.join(10)
         _screendump_thread = None
+
+    # Terminate the tcpdump thread
+    env.stop_tcpdump()
 
     # Warn about corrupt PPM files
     for f in glob.glob(os.path.join(test.debugdir, "*.ppm")):
