@@ -1,8 +1,14 @@
 import re
 import commands
 import logging
+import os
 from autotest.client.shared import error
 from virttest import virsh
+
+try:
+    from autotest.client.shared import utils_cgroup
+except ImportError:
+    from virttest.staging import utils_cgroup
 
 
 def run_virsh_cpu_stats(test, params, env):
@@ -20,6 +26,7 @@ def run_virsh_cpu_stats(test, params, env):
                                 "the cpu-stats test")
 
     vm_name = params.get("main_vm", "vm1")
+    vm = env.get_vm(vm_name)
     vm_ref = params.get("cpu_stats_vm_ref")
     status_error = params.get("status_error", "no")
     options = params.get("cpu_stats_options")
@@ -72,9 +79,10 @@ def run_virsh_cpu_stats(test, params, env):
         else:
             # Get cgroup cpu_time
             if not get_totalonly:
-                cgcpu = "cat /cgroup/cpuacct/libvirt/qemu/" + vm_name + \
-                        "/cpuacct.usage_percpu"
-                cgtime = commands.getoutput(cgcpu).strip().split()
+                cgcpu = os.path.join(
+                    utils_cgroup.resolve_task_cgroup_path(vm.get_pid(), "cpuacct"),
+                    "cpuacct.usage_percpu")
+                cgtime = commands.getoutput("cat %s" % cgcpu).strip().split()
                 logging.debug("cgtime get is %s", cgtime)
 
             # Cut CPUs from output and format to list
